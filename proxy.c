@@ -212,7 +212,7 @@ void* sendPackets(char* proxy_ip, char* buffer, int size, hashmap* fds_arr[], vp
             vitual_port = *is_cache; 
             printf("vitual_port: %d, realport: %d \n", vitual_port, realport);
         }
-        print_payload(datagram, size - 8);  
+        //print_payload(datagram, size - 8);
         iph -> daddr = inet_addr(proxy_ip);
         char* source_ip = getIp(source_ip);
         iph -> saddr = inet_addr(source_ip); 
@@ -240,14 +240,40 @@ void* sendPackets(char* proxy_ip, char* buffer, int size, hashmap* fds_arr[], vp
     }
 }
 
+/**
+ * gateway server
+ *
+ * target server
+ *
+ * SPDY encryption-descryption server
+ *
+ * http content tamper server
+ */
+
 int main(int argc, const char * argv[]) {
     printf("aproxy running... \n");
+
+    // encryption-descryption server ip
     char* proxy_ip = get_aserver_config();
-    // create port hash map
+
+    /**
+     * tsi : target server ip
+     * tsp : target server port
+     * cp: client port
+     * ci: client ip
+     *
+     * vp -> (tsi, tsp, cp, ci, fd)
+     */
     hashmap* real_port_map;
     real_port_map = hashmapCreate(SIZE); 
 
     vp_handle_t port_pool = create_port_pool();
+    /**
+     * (cp) client port: client request source port
+     * (vp) virtual port: gateway server source port
+     *
+     * (fd, cp) -> vp
+     */
     hashmap* fds_arr[3];
     int sorks[3];
 
@@ -256,13 +282,17 @@ int main(int argc, const char * argv[]) {
         fds_arr[j] = hashmapCreate(SIZE);
     }
 
-    //Create a tcp socket
+    // Create socket server
     int master_socket = 0;
     struct sockaddr_in address = getAddr(PORT);
     conn_init(&master_socket, device_clients, address,  3);
-    //Create a raw socket
+
+    // Create a raw socket
     int s = createRawSocket();
-    // init pcap
+
+    /**
+     * init pcap
+     */
     char *dev, errbuf[PCAP_ERRBUF_SIZE];
     struct bpf_program fp;    
     char filter_exp[1000];
@@ -300,7 +330,9 @@ int main(int argc, const char * argv[]) {
         fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
         return(2);
     }
+
     int max_sd = master_socket;
+
     while(1) {
         u_char buffer[65536];
         u_char* arg_array = (u_char*) real_port_map;

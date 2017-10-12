@@ -82,8 +82,7 @@ void writeFile(char* str){
     char* day = getFormattedDay();
     FILE *fp;
     char filename[100];
-    sprintf(filename, "./logs/tcp_flow.log.%s", day);
-    printf("filename, %s\n", filename);
+    sprintf(filename, "../../logs/tcp_flow.log.%s", day);
     fp = fopen(filename, "a");
     fputs(str, fp);
     fclose(fp);

@@ -55,7 +55,7 @@ int conn_init(int *master_socket, int client_socket[], struct sockaddr_in addres
     }
 
     //try to specify maximum of 3 pending connections for the master socket
-    if (listen(*master_socket, 3) < 0)
+    if (listen(*master_socket, 3) < 0) // TODO find out difference between one and more connections
     {
         perror("listen");
         exit(EXIT_FAILURE);
