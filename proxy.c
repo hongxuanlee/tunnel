@@ -20,7 +20,7 @@
 #include "db.c"
 #define PORT 8186
 
-#define PROXY_PORT 8808
+#define PROXY_PORT 6001
 #define ASSIGNED_IP "240.0.0.1"
 
 #define SNAP_LEN 1518
@@ -104,7 +104,7 @@ void ProcessPacket(unsigned char* buffer, int size, int connection, hashmap* rea
 }
 
 ssize_t onConnectMessage(int connection, char* message, int size){
-    db_save_device_config((char *) message + strlen("config:"));
+//    db_save_device_config((char *) message + strlen("config:"));
     char buffer[1024];
     int identifier = 1011;
     int length = 16;
@@ -212,7 +212,7 @@ void* sendPackets(char* proxy_ip, char* buffer, int size, hashmap* fds_arr[], vp
             vitual_port = *is_cache; 
             printf("vitual_port: %d, realport: %d \n", vitual_port, realport);
         }
-        //print_payload(datagram, size - 8);  
+        //print_payload(datagram, size - 8);
         iph -> daddr = inet_addr(proxy_ip);
         char* source_ip = getIp(source_ip);
         iph -> saddr = inet_addr(source_ip); 
