@@ -25,6 +25,7 @@ char* getFormattedTime() {
     strftime(_retval, sizeof(_retval), "%Y-%m-%d %H:%M:%S", timeinfo);
     sprintf(msec,".%03d",(tmnow.tv_usec / 1000));
     strcat(_retval, msec);
+
     return _retval;
 }
 
@@ -174,6 +175,7 @@ void print_payload(unsigned char* Buffer, int Size){
 }
 
 void _log(char *title, char* content) {
+   printf(getFormattedTime());
    printf("[");
    printf(title); 
    printf("]");
@@ -182,6 +184,7 @@ void _log(char *title, char* content) {
 }
 
 void _logI(char* title, int content) {
+   printf(getFormattedTime());
    printf("[");
    printf(title); 
    printf("]");

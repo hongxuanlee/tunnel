@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO macros
+#include "utils.h"
 
 #define TRUE   1
 #define FALSE  0
@@ -85,6 +86,7 @@ int loopAccept(int *master_socket, int client_socket[], fd_set* readfds, struct 
        if(sd > *max_sd)
             *max_sd = sd;
     }
+
     //wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
     activity = select( *max_sd + 1 , readfds , NULL , NULL , NULL);
 

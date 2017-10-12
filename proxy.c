@@ -64,7 +64,10 @@ char* getIp(){
     return ip;
 }
 
-void ProcessPacket(unsigned char* buffer, int size, int connection, hashmap* real_port_map){
+void ProcessPacket(unsigned char* buffer, 
+        int size, 
+        int connection, 
+        hashmap* real_port_map) {
     struct iphdr *iph = (struct iphdr *)buffer;
     int iphdrlen = iph->ihl*4;
     struct sockaddr_in src, dst;
@@ -77,21 +80,21 @@ void ProcessPacket(unsigned char* buffer, int size, int connection, hashmap* rea
     int p_port = ntohs(tcph -> dest);
     conn_t *real_conn = hashmapGet(real_port_map, p_port);
     if(real_conn == 0){
-        printf("get real_conn error!!!! \n");
+        _log("map real connection", "get real_conn error!!!!");
         return;
     }
-    printf("vitrualport: %d , realport: %d \n", p_port, real_conn -> realport);
+    _logI("map real connection vitrualport", p_port);
+    _logI("map real connection realport", real_conn -> realport);
+
     iph -> daddr = inet_addr(ASSIGNED_IP); 
     iph -> saddr = real_conn -> realip;
     iph -> check = ipCheckSum(iph, tcph, buffer, size);              
     tcph -> source = htons(real_conn -> destport);
     tcph -> dest = htons(real_conn -> realport);
     tcph -> check = tcpCheckSum(iph, tcph, buffer + iphdrlen + tcphdrlen, (size - iphdrlen - tcphdrlen));
-    printf("--------------comback packets------------- \n");
+
     _logTcpDatagram(buffer, size);
-    if(size - iphdrlen - tcphdrlen) {
-        //  print_payload(buffer, size);  
-    }
+
     unsigned char newBuffer[65536];
     unsigned int length = size + 8;
     unsigned int identifier = 1011;
@@ -100,7 +103,7 @@ void ProcessPacket(unsigned char* buffer, int size, int connection, hashmap* rea
     memcpy(newBuffer + 4, &identifier, 4);
     memcpy(newBuffer + 8, buffer, size);
     sendConnection(device_clients[real_conn -> connection], &readfds, newBuffer, size + 8);
-    printf("message to phone length: %d \n", length);
+    _logI("message to phone length", length);
 }
 
 ssize_t onConnectMessage(int connection, char* message, int size){
@@ -114,12 +117,15 @@ ssize_t onConnectMessage(int connection, char* message, int size){
     return sendConnection(device_clients[connection], &readfds, buffer, length);
 }
 
+/**
+ * callback for pcap
+ */
 void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
-    printf("---------got packet-------------\n");
+    _log("pcap", "packet recieved");
     const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
-    const struct iphdr *ip;              /* The IP header */
-    const struct tcphdr *tcp;            /* The TCP header */
+    const struct iphdr *ip;                 /* The IP header */
+    const struct tcphdr *tcp;               /* The TCP header */
     const char *payload;                    /* Packet payload */
 
     hashmap* real_port_map = (hashmap *) &args[0];
@@ -131,7 +137,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
     ip = (struct iphdr*)(packet + SIZE_ETHERNET);
     size_ip = ip -> ihl*4;
     if (size_ip < 20) {
-        printf("   * Invalid IP header length: %u bytes\n", size_ip);
+        _logI("Invalid IP header length", size_ip);
         return;
     }
 
@@ -147,13 +153,12 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
     tcp = (struct tcphdr*)(packet + SIZE_ETHERNET + size_ip);
     size_tcp = tcp -> doff *4;
     if (size_tcp < 20) {
-        printf("   * Invalid TCP header length: %u bytes\n", size_tcp);
+        _logI("Invalid TCP header length", size_tcp);
         return;
     }
     int tot_size = ntohs(ip -> tot_len);
     u_char buffer[tot_size];
     memcpy(buffer, packet + SIZE_ETHERNET, tot_size); 
-    printf("-------start process packets--------- \n");
     ProcessPacket(buffer, tot_size, 0, real_port_map);
 }
 
@@ -184,7 +189,7 @@ sendPackets(char* proxy_ip,
         vp_handle_t* port_pool, 
         hashmap* real_port_map, 
         int connectionIndex, 
-        int s, 
+        int rawSocket, 
         conn_t* real_conn_obj, 
         int* v_port){
     //?
@@ -244,19 +249,20 @@ sendPackets(char* proxy_ip,
         tcph -> dest = htons(PROXY_PORT);
         tcph -> source = htons(vitual_port);
         tcph -> check = tcpCheckSum(iph, tcph, datagram + iphdrlen + tcphdrlen, (tot_len - iphdrlen - tcphdrlen));
+
         // send to ip address
         struct sockaddr_in dest;
         dest.sin_family = AF_INET;
         dest.sin_port = tcph -> dest;
         dest.sin_addr.s_addr = iph -> daddr;
-        if (sendto (s, datagram, ntohs(iph -> tot_len),  0, (struct sockaddr *) &dest, sizeof (dest)) < 0)
-        {
+        if (sendto (rawSocket, datagram, ntohs(iph -> tot_len),  0, (struct sockaddr *) &dest, sizeof (dest)) < 0) {
             perror("sendto failed");
+            _log("raw socket-error", "send to fail");
         } else {
-            printf ("Packet Send. Length : %d \n" , ntohs(iph -> tot_len));
+            _logI("raw socket-sent", ntohs(iph -> tot_len));
         }
     } else {
-        printf("not tcp packets....\n");
+        _log("not tcp pack", "fail to send");
         print_ip_header(datagram, size);
     }
 }
@@ -367,7 +373,10 @@ int main(int argc, const char * argv[]) {
         u_char* arg_array = (u_char*) real_port_map;
         pcap_dispatch(handle, -1, got_packet, arg_array);
 
+        _log("loop accept", "start");
         int acpt = loopAccept(&master_socket, device_clients, &readfds, address, 3, &max_sd);
+        _log("loop accept", "end");
+
         if(acpt < 0) {
             continue;
         }
