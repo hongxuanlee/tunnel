@@ -97,17 +97,19 @@ void getFlag(struct tcphdr* tcph, char* flag){
     if(tcph -> urg != 0) strcat(flag, "U");
 }
 
-void generatorLog(unsigned char* Buffer, int Size){
+void _logTcpDatagram(unsigned char* Buffer, int Size){
     char str[1024]; 
     struct iphdr *iph = (struct iphdr *)Buffer;
 
     struct in_addr source; 
     struct in_addr dest; 
-    char* src_ip  = malloc(32);
+
     source.s_addr = iph -> saddr;
+    char* src_ip  = malloc(32);
     strcpy(src_ip, inet_ntoa(source));
-    char* dst_ip = malloc(32);
+
     dest.s_addr = iph -> daddr;
+    char* dst_ip = malloc(32);
     strcpy(dst_ip, inet_ntoa(dest));
 
     char* time = getFormattedTime();
@@ -124,8 +126,11 @@ void generatorLog(unsigned char* Buffer, int Size){
 
     sprintf(str, "%s (flags: [%s]) %s:%d > %s:%d, seq: %d, ack: %d, win: %d, length: %d bytes \n", time, flags, src_ip, ntohs(tcph -> source),dst_ip, ntohs(tcph -> dest), seq, ack, ntohs(tcph -> window), ntohs(iph -> tot_len));
 
-    printf("tcp_flow: %s", str);
-    writeFile(str);
+    _log("tcp", str);
+    // writeFile(str);
+
+    free(src_ip);
+    free(dst_ip);
 }
 
 void print_ip_header(unsigned char* Buffer, int Size)
@@ -168,3 +173,18 @@ void print_payload(unsigned char* Buffer, int Size){
     }
 }
 
+void _log(char *title, char* content) {
+   printf("[");
+   printf(title); 
+   printf("]");
+   printf(content); 
+   printf("\n"); 
+}
+
+void _logI(char* title, int content) {
+   printf("[");
+   printf(title); 
+   printf("]");
+   printf("%d", content); 
+   printf("\n"); 
+}

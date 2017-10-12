@@ -88,7 +88,7 @@ void ProcessPacket(unsigned char* buffer, int size, int connection, hashmap* rea
     tcph -> dest = htons(real_conn -> realport);
     tcph -> check = tcpCheckSum(iph, tcph, buffer + iphdrlen + tcphdrlen, (size - iphdrlen - tcphdrlen));
     printf("--------------comback packets------------- \n");
-    generatorLog(buffer, size);
+    _logTcpDatagram(buffer, size);
     if(size - iphdrlen - tcphdrlen) {
         //  print_payload(buffer, size);  
     }
@@ -108,7 +108,6 @@ ssize_t onConnectMessage(int connection, char* message, int size){
     char buffer[1024];
     int identifier = 1011;
     int length = 16;
-    printf("message: %s \n", message);
     char* c = (char*)&length;
     char* ci = (char*)&identifier;
     sprintf(buffer, "%c%c%c%c%c%c%c%cWelcome!", c[0], c[1], c[2], c[3], ci[0], ci[1], ci[2], ci[3]);
@@ -177,41 +176,65 @@ int createRawSocket() {
     return s;
 }
 
-void* sendPackets(char* proxy_ip, char* buffer, int size, hashmap* fds_arr[], vp_handle_t* port_pool, hashmap* real_port_map, int idx, int s, conn_t* real_conn_obj, int* v_port){
+void* 
+sendPackets(char* proxy_ip, 
+        char* buffer, 
+        int size, 
+        hashmap* fds_arr[], 
+        vp_handle_t* port_pool, 
+        hashmap* real_port_map, 
+        int connectionIndex, 
+        int s, 
+        conn_t* real_conn_obj, 
+        int* v_port){
+    //?
+    /*
     if(strncmp(buffer, tmp_buffer, size) == 0){
         return 0;
     }
     strcpy(tmp_buffer, buffer);
-    u_char* datagram = (u_char*) &buffer[8];
-    unsigned short iphdrlen;
-    struct iphdr *iph = (struct iphdr *)datagram;
-    iphdrlen = iph->ihl*4;
+    */
+
+    _log("unpack", "ip header");
+
+    u_char* datagram = (u_char*) &buffer[8]; // start from 8, raw data
+    struct iphdr *iph = (struct iphdr *) datagram;
+    unsigned short iphdrlen = iph->ihl * 4;
+
     if((unsigned int)iph->protocol == 6)
     { 
-        struct tcphdr *tcph=(struct tcphdr*)(datagram + iphdrlen);
-        unsigned short tcphdrlen = tcph->doff*4;
+        _log("unpack", "tcp header");
+
+        struct tcphdr *tcph = (struct tcphdr*)(datagram + iphdrlen);
+        unsigned short tcphdrlen = tcph->doff * 4;
         int tot_len = ntohs(iph -> tot_len); 
-        size = size - 8;
-        printf("-------------------send to server -------------------\n");
-        generatorLog(datagram, size);
+        size -= 8;
+
+        _logTcpDatagram(datagram, size);
+
+        // update (ip, port) -> port mapping
         unsigned int realport = ntohs(tcph -> source);
-        int* is_cache = hashmapGet(fds_arr[idx], realport); 
+        int* is_cache = hashmapGet(fds_arr[connectionIndex], realport); 
         int vitual_port;
         if(is_cache == 0){
             *v_port = generate_port(port_pool);
             vitual_port = *v_port;
-            hashmapInsert(fds_arr[idx], v_port, realport);
-            real_conn_obj -> connection = idx;
+            hashmapInsert(fds_arr[connectionIndex], v_port, realport);
+
+            real_conn_obj -> connection = connectionIndex;
             real_conn_obj -> realport = realport;
             real_conn_obj -> realip = iph -> daddr; 
             real_conn_obj -> destport = ntohs(tcph -> dest);
+
             hashmapInsert(real_port_map, real_conn_obj, vitual_port);
-            printf("real port map update: vitual_port: %d, realport: %d \n", vitual_port, realport);
-            //conn_t* res = hashmapGet(real_port_map, vitual_port);
-        }else{
+            _logI("update-vitual-port", vitual_port);
+            _logI("update-real-port", realport);
+        } else {
             vitual_port = *is_cache; 
-            printf("vitual_port: %d, realport: %d \n", vitual_port, realport);
+            _logI("set-vitual-port", vitual_port);
+            _logI("set-real-port", realport);
         }
+
         //print_payload(datagram, size - 8);
         iph -> daddr = inet_addr(proxy_ip);
         char* source_ip = getIp(source_ip);
@@ -229,16 +252,64 @@ void* sendPackets(char* proxy_ip, char* buffer, int size, hashmap* fds_arr[], vp
         if (sendto (s, datagram, ntohs(iph -> tot_len),  0, (struct sockaddr *) &dest, sizeof (dest)) < 0)
         {
             perror("sendto failed");
-        }
-        else
-        {
+        } else {
             printf ("Packet Send. Length : %d \n" , ntohs(iph -> tot_len));
         }
-    }else{
+    } else {
         printf("not tcp packets....\n");
         print_ip_header(datagram, size);
     }
 }
+
+char* filterRule(char* proxy_ip) {
+    char* filter_exp = (char*) malloc(1000);
+    sprintf(filter_exp, "src host %s && src port %d", proxy_ip, PROXY_PORT); 
+    return filter_exp;
+}
+
+pcap_t * initPcap(char* proxy_ip) {
+    _log("init pcap", proxy_ip);
+    pcap_t *handle;
+    char errbuf[PCAP_ERRBUF_SIZE];
+    struct bpf_program fp;    
+    struct pcap_pkthdr header;
+    // bpf_u_int32 mask;        /* The netmask of our sniffing device */
+    bpf_u_int32 net;        /* The IP of our sniffing device */
+    char* device = pcap_lookupdev(errbuf);
+
+    // dev = "lo";
+    if (device == NULL) {
+        exitWithLog("Couldn't find default device", errbuf);
+    }
+    handle = pcap_open_live(device, BUFSIZ, 1, 2000, errbuf);
+    if (handle == NULL) {
+        exitWithLog("Couldn't open device", errbuf);
+    }
+    if (pcap_datalink(handle) != DLT_EN10MB) {
+        exitWithLog("not an Ethernet", device);
+    }
+    /* set non block*/
+    if(pcap_setnonblock(handle, 1, errbuf) == -1) {
+        exitWithLog("set block fail", errbuf);
+    }
+
+    char filter_exp[1000];
+    sprintf(filter_exp, "src host %s && src port %d", proxy_ip, PROXY_PORT); 
+
+    if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+        exitWithLog("Couldn't parse filter", pcap_geterr(handle));
+    }
+    if (pcap_setfilter(handle, &fp) == -1) {
+        exitWithLog("Couldn't install filter", pcap_geterr(handle));
+    }
+
+    return handle;
+}
+
+struct IPPort {
+    hashmap* real_port_map;
+    hashmap** fds_arr;
+};
 
 /**
  * gateway server
@@ -249,13 +320,13 @@ void* sendPackets(char* proxy_ip, char* buffer, int size, hashmap* fds_arr[], vp
  *
  * http content tamper server
  */
-
 int main(int argc, const char * argv[]) {
-    printf("aproxy running... \n");
-
+    _log("main", "aproxy running...");
     // encryption-descryption server ip
     char* proxy_ip = get_aserver_config();
+    _log("proxy_ip", proxy_ip);
 
+    struct sockaddr_in address = getAddr(PORT);
     /**
      * tsi : target server ip
      * tsp : target server port
@@ -264,8 +335,7 @@ int main(int argc, const char * argv[]) {
      *
      * vp -> (tsi, tsp, cp, ci, fd)
      */
-    hashmap* real_port_map;
-    real_port_map = hashmapCreate(SIZE); 
+    hashmap* real_port_map = hashmapCreate(SIZE); 
 
     vp_handle_t port_pool = create_port_pool();
     /**
@@ -275,63 +345,22 @@ int main(int argc, const char * argv[]) {
      * (fd, cp) -> vp
      */
     hashmap* fds_arr[3];
-    int sorks[3];
 
     int j;
-    for(j = 0; j < 3; j++){
+    for(j = 0; j < 3; j++) {
         fds_arr[j] = hashmapCreate(SIZE);
     }
 
     // Create socket server
+    _log("init", "create socket server");
     int master_socket = 0;
-    struct sockaddr_in address = getAddr(PORT);
     conn_init(&master_socket, device_clients, address,  3);
+    int max_sd = master_socket;
 
     // Create a raw socket
-    int s = createRawSocket();
+    int rawSocket = createRawSocket();
 
-    /**
-     * init pcap
-     */
-    char *dev, errbuf[PCAP_ERRBUF_SIZE];
-    struct bpf_program fp;    
-    char filter_exp[1000];
-    sprintf(filter_exp, "src host %s && src port %d", proxy_ip, PROXY_PORT); 
-
-    struct pcap_pkthdr header;
-    const u_char *packet;
-    bpf_u_int32 mask;        /* The netmask of our sniffing device */
-    bpf_u_int32 net;        /* The IP of our sniffing device */
-    dev = pcap_lookupdev(errbuf);
-    // dev = "lo";
-    if (dev == NULL) {
-        fprintf(stderr, "Couldn't find default device: %s\n", errbuf);
-        return(2);
-    }
-    pcap_t *handle;
-    handle = pcap_open_live(dev, BUFSIZ, 1, 2000, errbuf);
-    if (handle == NULL) {
-        fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
-        return(2);
-    }
-    if (pcap_datalink(handle) != DLT_EN10MB) {
-        fprintf(stderr, "%s is not an Ethernet\n", dev);
-        exit(-1);
-    }
-    /* set non block*/
-    if(pcap_setnonblock(handle, 1, errbuf) == -1) {
-        fprintf(stderr, "%s", errbuf);
-    }
-    if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-        fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp,   pcap_geterr(handle));
-        return(2);
-    }
-    if (pcap_setfilter(handle, &fp) == -1) {
-        fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-        return(2);
-    }
-
-    int max_sd = master_socket;
+    pcap_t *handle = initPcap(proxy_ip); 
 
     while(1) {
         u_char buffer[65536];
@@ -342,24 +371,35 @@ int main(int argc, const char * argv[]) {
         if(acpt < 0) {
             continue;
         }
-        int saddr_size = sizeof (struct sockaddr);
-        int i, receivedSize;
+        int i; 
         for(i = 0; i < 3; i++){
-            receivedSize = readConnection(i, device_clients, &readfds, buffer);
+            int receivedSize = readConnection(i, device_clients, &readfds, buffer);
             int fds = device_clients[i];
-            if(receivedSize){
-                int length = *(int*) &buffer[0];
+            if(receivedSize) {
+                _logI("received", receivedSize);
                 u_char* datagram = (u_char*) &buffer[8];
+
                 if(strncmp(datagram, "config:", strlen("config:")) == 0){
+                    int length = *(int*) &buffer[0];
+                    _log("raw-config", datagram);
                     onConnectMessage(i, datagram, length);
-                }else{
+                } else {
                     conn_t *real_conn_obj;
                     real_conn_obj = (conn_t *) malloc(sizeof(conn_t));
                     int* v_port;
                     v_port = (int*) malloc(sizeof(int));
-                    sendPackets(proxy_ip, buffer, receivedSize, fds_arr, &port_pool, real_port_map, i, s, real_conn_obj, v_port);
+                    sendPackets(proxy_ip, 
+                            buffer, 
+                            receivedSize, 
+                            fds_arr, 
+                            &port_pool, 
+                            real_port_map, 
+                            i, 
+                            rawSocket, 
+                            real_conn_obj, 
+                            v_port);
                 }
-            }else {
+            } else {
                 //printf("reciedved: No.%d - %d \n", i, receivedSize);
             }
         }   

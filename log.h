@@ -17,12 +17,15 @@ char* getFormattedTime(void);
 
 #define LOGNAME "tcp_flow.log"
 
-void generatorLog(unsigned char* Buffer, int Size);
+void _logTcpDatagram(unsigned char* Buffer, int Size);
 
 void PrintData (unsigned char* data , int Size);
 
 void print_ip_header(unsigned char* Buffer, int Size);
 
 void print_tcp_packet(unsigned char* Buffer, int Size);
+
+void _log(char* title, char* content);
+void _logI(char* title, int content);
 
 #endif

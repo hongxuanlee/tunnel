@@ -25,6 +25,7 @@ struct sockaddr_in getAddr(int port){
     address.sin_port = htons(port);
     return address; 
 } 
+
 int conn_init(int *master_socket, int client_socket[], struct sockaddr_in address, int max_clients) {
     int opt = TRUE;
     int i;

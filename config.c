@@ -105,7 +105,6 @@ char* get_aserver_config(){
     }   
   }
   fclose(fp);
-  printf("a_address: %s \n", a_address);
   return a_address;
 }
 
