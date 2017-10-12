@@ -20,7 +20,7 @@
 #include "db.c"
 #define PORT 8186
 
-#define PROXY_PORT 6001
+#define PROXY_PORT 80
 #define ASSIGNED_IP "240.0.0.1"
 
 #define SNAP_LEN 1518
@@ -46,7 +46,7 @@ typedef struct conn {
 int phone_connection; 
 u_char tmp_buffer[65536];
 
-int device_clients[3];    
+int device_clients[30];    
 int vitual_clients[600];
 
 fd_set readfds, readfds2;
@@ -274,18 +274,17 @@ int main(int argc, const char * argv[]) {
      *
      * (fd, cp) -> vp
      */
-    hashmap* fds_arr[3];
-    int sorks[3];
+    hashmap* fds_arr[30];
 
     int j;
-    for(j = 0; j < 3; j++){
+    for(j = 0; j < 30; j++){
         fds_arr[j] = hashmapCreate(SIZE);
     }
 
     // Create socket server
     int master_socket = 0;
     struct sockaddr_in address = getAddr(PORT);
-    conn_init(&master_socket, device_clients, address,  3);
+    conn_init(&master_socket, device_clients, address,  30);
 
     // Create a raw socket
     int s = createRawSocket();
@@ -337,14 +336,13 @@ int main(int argc, const char * argv[]) {
         u_char buffer[65536];
         u_char* arg_array = (u_char*) real_port_map;
         pcap_dispatch(handle, -1, got_packet, arg_array);
-
-        int acpt = loopAccept(&master_socket, device_clients, &readfds, address, 3, &max_sd);
+        int acpt = loopAccept(&master_socket, device_clients, &readfds, address, 30, &max_sd);
         if(acpt < 0) {
             continue;
         }
         int saddr_size = sizeof (struct sockaddr);
         int i, receivedSize;
-        for(i = 0; i < 3; i++){
+        for(i = 0; i < 30; i++){
             receivedSize = readConnection(i, device_clients, &readfds, buffer);
             int fds = device_clients[i];
             if(receivedSize){
@@ -358,7 +356,7 @@ int main(int argc, const char * argv[]) {
                     int* v_port;
                     v_port = (int*) malloc(sizeof(int));
                     sendPackets(proxy_ip, buffer, receivedSize, fds_arr, &port_pool, real_port_map, i, s, real_conn_obj, v_port);
-                }
+               }
             }else {
                 //printf("reciedved: No.%d - %d \n", i, receivedSize);
             }
