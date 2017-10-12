@@ -1,5 +1,7 @@
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -27,6 +29,8 @@
 #define SIZE_ETHERNET 14
 #define SIZE 8064 
 
+#define MAX_CONNECTIONS 30
+
 /* Ethernet header */
 struct sniff_ethernet {
     u_char  ether_dhost[ETHER_ADDR_LEN];    /* destination host address */
@@ -46,7 +50,7 @@ typedef struct conn {
 int phone_connection; 
 u_char tmp_buffer[65536];
 
-int device_clients[3];    
+int device_clients[MAX_CONNECTIONS];    
 int vitual_clients[600];
 
 fd_set readfds, readfds2;
@@ -317,6 +321,99 @@ struct IPPort {
     hashmap** fds_arr;
 };
 
+struct AcceptHandleContext {
+    int acpt; // accept code
+    u_char *buffer; // buffer
+    char* proxy_ip; //
+    hashmap** fds_arr;
+    vp_handle_t* port_pool;
+    hashmap* real_port_map;
+    int rawSocket;
+};
+
+typedef struct AcceptHandleContext AcceptHandleContext;
+
+void * handleAccept(void* args) { 
+    AcceptHandleContext *acceptHandleContext = (AcceptHandleContext *) args;
+
+    if(acceptHandleContext->acpt < 0) {
+        return 0; 
+    }
+    int i; 
+    for(i = 0; i < MAX_CONNECTIONS; i++){
+        int receivedSize = readConnection(i, device_clients, &readfds, acceptHandleContext->buffer);
+        int fds = device_clients[i];
+        if(receivedSize) {
+            _logI("received", receivedSize);
+            u_char* datagram = (u_char*) &acceptHandleContext->buffer[8];
+
+            if(strncmp(datagram, "config:", strlen("config:")) == 0){
+                int length = *(int*) &acceptHandleContext->buffer[0];
+                _log("raw-config", datagram);
+                onConnectMessage(i, datagram, length);
+            } else {
+                conn_t *real_conn_obj;
+                real_conn_obj = (conn_t *) malloc(sizeof(conn_t));
+                int* v_port;
+                v_port = (int*) malloc(sizeof(int));
+                sendPackets(acceptHandleContext->proxy_ip, 
+                        acceptHandleContext->buffer, 
+                        receivedSize, 
+                        acceptHandleContext->fds_arr, 
+                        acceptHandleContext->port_pool, 
+                        acceptHandleContext->real_port_map, 
+                        i, 
+                        acceptHandleContext->rawSocket, 
+                        real_conn_obj, 
+                        v_port);
+            }
+        } else {
+            //printf("reciedved: No.%d - %d \n", i, receivedSize);
+        }
+    } 
+}
+
+struct AcceptThreadContext {
+    char* proxy_ip;
+    struct sockaddr_in address;
+    pcap_t* handle;
+    int master_socket;
+    int rawSocket;
+    hashmap* real_port_map;
+    hashmap** fds_arr;
+    vp_handle_t* port_pool;
+    int max_sd;
+};
+
+typedef struct AcceptThreadContext AcceptThreadContext;
+
+void* acceptThread(void* args) {
+    AcceptThreadContext* acceptThreadContext = (AcceptThreadContext*) args;
+    int max_sd = acceptThreadContext->max_sd;
+    while(1) {
+        u_char buffer[65536];
+        _log("loop accept", "start");
+        int acpt = loopAccept(&acceptThreadContext->master_socket, 
+                device_clients, 
+                &readfds, 
+                acceptThreadContext->address,
+                MAX_CONNECTIONS, 
+                &max_sd);
+
+        _log("loop accept", "end");
+
+        AcceptHandleContext acceptHandleContext = {acpt, 
+            buffer, 
+            acceptThreadContext->proxy_ip, 
+            acceptThreadContext->fds_arr, 
+            acceptThreadContext->port_pool, 
+            acceptThreadContext->real_port_map, 
+            acceptThreadContext->rawSocket};   
+
+        handleAccept(&acceptHandleContext);
+    }
+}
+
 /**
  * gateway server
  *
@@ -350,17 +447,17 @@ int main(int argc, const char * argv[]) {
      *
      * (fd, cp) -> vp
      */
-    hashmap* fds_arr[3];
+    hashmap* fds_arr[MAX_CONNECTIONS];
 
     int j;
-    for(j = 0; j < 3; j++) {
+    for(j = 0; j < MAX_CONNECTIONS; j++) {
         fds_arr[j] = hashmapCreate(SIZE);
     }
 
     // Create socket server
     _log("init", "create socket server");
     int master_socket = 0;
-    conn_init(&master_socket, device_clients, address,  3);
+    conn_init(&master_socket, device_clients, address,  MAX_CONNECTIONS);
     int max_sd = master_socket;
 
     // Create a raw socket
@@ -368,49 +465,35 @@ int main(int argc, const char * argv[]) {
 
     pcap_t *handle = initPcap(proxy_ip); 
 
+    AcceptThreadContext acceptThreadContext = {
+        proxy_ip,
+        address,
+        handle,
+        master_socket,
+        rawSocket,
+        real_port_map,
+        fds_arr,
+        &port_pool,
+        max_sd
+    };
+
+    pthread_t tid;
+    pthread_create(&tid, NULL, acceptThread, &acceptThreadContext);
+    _log("thread", "launch aacept thread");
+
+    // TODO
     while(1) {
-        u_char buffer[65536];
+        struct timespec tim, tim2;
+        tim.tv_sec = 1;
+        tim.tv_nsec = 5000000; // 5ms
+
+       if(nanosleep(&tim , &tim2) < 0 )   
+       {
+          printf("Nano sleep system call failed \n");
+          return -1;
+       }
+
         u_char* arg_array = (u_char*) real_port_map;
         pcap_dispatch(handle, -1, got_packet, arg_array);
-
-        _log("loop accept", "start");
-        int acpt = loopAccept(&master_socket, device_clients, &readfds, address, 3, &max_sd);
-        _log("loop accept", "end");
-
-        if(acpt < 0) {
-            continue;
-        }
-        int i; 
-        for(i = 0; i < 3; i++){
-            int receivedSize = readConnection(i, device_clients, &readfds, buffer);
-            int fds = device_clients[i];
-            if(receivedSize) {
-                _logI("received", receivedSize);
-                u_char* datagram = (u_char*) &buffer[8];
-
-                if(strncmp(datagram, "config:", strlen("config:")) == 0){
-                    int length = *(int*) &buffer[0];
-                    _log("raw-config", datagram);
-                    onConnectMessage(i, datagram, length);
-                } else {
-                    conn_t *real_conn_obj;
-                    real_conn_obj = (conn_t *) malloc(sizeof(conn_t));
-                    int* v_port;
-                    v_port = (int*) malloc(sizeof(int));
-                    sendPackets(proxy_ip, 
-                            buffer, 
-                            receivedSize, 
-                            fds_arr, 
-                            &port_pool, 
-                            real_port_map, 
-                            i, 
-                            rawSocket, 
-                            real_conn_obj, 
-                            v_port);
-                }
-            } else {
-                //printf("reciedved: No.%d - %d \n", i, receivedSize);
-            }
-        }   
     }
-}       
+}
