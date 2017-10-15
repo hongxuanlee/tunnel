@@ -478,14 +478,19 @@ int main(int argc, const char * argv[]) {
     };
 
     pthread_t tid;
-    pthread_create(&tid, NULL, acceptThread, &acceptThreadContext);
-    _log("thread", "launch aacept thread");
+
+    int i;
+    for(i = 0; i < 1; i++) {
+        pthread_create(&tid, NULL, acceptThread, &acceptThreadContext);
+        _log("thread", "launch aacept thread");
+        _logI("thread", tid);
+    }
 
     // TODO
     while(1) {
         struct timespec tim, tim2;
         tim.tv_sec = 1;
-        tim.tv_nsec = 5000000; // 5ms
+        tim.tv_nsec = 50000; // 0.05ms
 
        if(nanosleep(&tim , &tim2) < 0 )   
        {

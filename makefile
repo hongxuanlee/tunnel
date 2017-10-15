@@ -9,4 +9,4 @@ dev:
 	@echo $@
 	@./dev.sh
 
-.PHONY: build
+.PHONY: build test dev
