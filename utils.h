@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "log.h"
 
 struct pseudoHeader
 {
@@ -25,5 +26,7 @@ unsigned short ipCheckSum(struct iphdr* iph, struct tcphdr* tcph, char* data, in
 unsigned short tcpCheckSum(struct iphdr* iph, struct tcphdr* tcph, char* data, int size);
 
 int in_array(int val, int *arr, int size);
+
+void exitWithLog(char* title, char* message);
 
 #endif

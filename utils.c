@@ -98,3 +98,7 @@ void str_replace(char *target, const char *needle, const char *replacement)
 }
 
 
+void exitWithLog(char* title, char* message) {
+    _log(title, message);
+    exit(2);
+}

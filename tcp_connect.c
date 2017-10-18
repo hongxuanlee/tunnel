@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO macros
+#include "utils.h"
 
 #define TRUE   1
 #define FALSE  0
@@ -25,6 +26,7 @@ struct sockaddr_in getAddr(int port){
     address.sin_port = htons(port);
     return address; 
 } 
+
 int conn_init(int *master_socket, int client_socket[], struct sockaddr_in address, int max_clients) {
     int opt = TRUE;
     int i;
@@ -47,7 +49,7 @@ int conn_init(int *master_socket, int client_socket[], struct sockaddr_in addres
         perror("setsockopt");
         exit(EXIT_FAILURE);
     }
-    //bind the socket to localhost port 8888
+    //bind the socket to localhost port
     if (bind(*master_socket, (struct sockaddr *)&address, sizeof(address))<0) 
     {
         perror("bind failed");
@@ -55,7 +57,7 @@ int conn_init(int *master_socket, int client_socket[], struct sockaddr_in addres
     }
 
     //try to specify maximum of 3 pending connections for the master socket
-    if (listen(*master_socket, 3) < 0) // TODO find out difference between one and more connections
+    if (listen(*master_socket, max_clients) < 0) // TODO find out difference between one and more connections
     {
         perror("listen");
         exit(EXIT_FAILURE);
@@ -84,6 +86,7 @@ int loopAccept(int *master_socket, int client_socket[], fd_set* readfds, struct 
        if(sd > *max_sd)
             *max_sd = sd;
     }
+
     //wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
     activity = select( *max_sd + 1 , readfds , NULL , NULL , NULL);
 
