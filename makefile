@@ -3,10 +3,10 @@ CC=gcc
 
 build:
 	@echo $@
-	@$(CC) -o output hashmap.c proxy.c -I. -lpcap $$(mysql_config --cflags) $$(mysql_config --libs)	
+	@$(CC) -o output hashmap.c log.c proxy.c -I. -lpcap $$(mysql_config --cflags) $$(mysql_config --libs)	
 
 dev:
 	@echo $@
 	@./dev.sh
 
-.PHONY: build
+.PHONY: build test dev

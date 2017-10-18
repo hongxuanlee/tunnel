@@ -22,7 +22,7 @@
 #include "db.c"
 #define PORT 8186
 
-#define PROXY_PORT 8808
+#define PROXY_PORT 6001
 #define ASSIGNED_IP "240.0.0.1"
 
 #define SNAP_LEN 1518
@@ -50,7 +50,7 @@ typedef struct conn {
 int phone_connection; 
 u_char tmp_buffer[65536];
 
-int device_clients[MAX_CONNECTIONS];
+int device_clients[MAX_CONNECTIONS];    
 int vitual_clients[600];
 
 fd_set readfds, readfds2;
@@ -68,9 +68,9 @@ char* getIp(){
     return ip;
 }
 
-void ProcessPacket(unsigned char* buffer,
-        int size,
-        int connection,
+void ProcessPacket(unsigned char* buffer, 
+        int size, 
+        int connection, 
         hashmap* real_port_map) {
     struct iphdr *iph = (struct iphdr *)buffer;
     int iphdrlen = iph->ihl*4;
@@ -205,7 +205,7 @@ void* sendPackets(char* proxy_ip,
     unsigned short iphdrlen = iph->ihl * 4;
 
     if((unsigned int)iph->protocol == 6)
-    { 
+    {
         struct tcphdr *tcph = (struct tcphdr*)(datagram + iphdrlen);
         unsigned short tcphdrlen = tcph->doff * 4;
         int tot_len = ntohs(iph -> tot_len); 
@@ -225,11 +225,11 @@ void* sendPackets(char* proxy_ip,
             real_conn_obj -> connection = connectionIndex;
             real_conn_obj -> realport = realport;
             real_conn_obj -> realip = iph -> daddr;
-            real_conn_obj -> destport = ntohs(tcph -> dest); 
+            real_conn_obj -> destport = ntohs(tcph -> dest);
             hashmapInsert(real_port_map, real_conn_obj, vitual_port);
             LOGINFO("update-vitual-port %d, realport %d", vitual_port, realport);
         } else {
-            vitual_port = *is_cache; 
+            vitual_port = *is_cache;
         }
 
         //print_payload(datagram, size - 8);
@@ -459,11 +459,18 @@ int main(int argc, const char * argv[]) {
     pthread_create(&tid, NULL, acceptThread, &acceptThreadContext);
     LOGDEBUG("launch accept thread");
 
+//    int i;
+//    for(i = 0; i < 1; i++) {
+//        pthread_create(&tid, NULL, acceptThread, &acceptThreadContext);
+//        _log("thread", "launch aacept thread");
+//        _logI("thread", tid);
+//    }
+
     // TODO
     while(1) {
         struct timespec tim, tim2;
         tim.tv_sec = 1;
-        tim.tv_nsec = 5000000; // 5ms
+        tim.tv_nsec = 50000; // 0.05ms
 
        if(nanosleep(&tim , &tim2) < 0 )
        {
