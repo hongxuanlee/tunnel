@@ -22,7 +22,7 @@
 #include "db.c"
 #define PORT 8186
 
-#define PROXY_PORT 6001
+#define PROXY_PORT 80
 #define ASSIGNED_IP "240.0.0.1"
 
 #define SNAP_LEN 1518
@@ -240,18 +240,21 @@ void* sendPackets(char* proxy_ip,
 
         tcph -> dest = htons(PROXY_PORT);
         tcph -> source = htons(vitual_port);
-        tcph -> check = tcpCheckSum(iph, tcph, datagram + iphdrlen + tcphdrlen, (tot_len - iphdrlen - tcphdrlen));
-
+        tcph -> check = tcpCheckSum(iph, tcph, datagram + iphdrlen + tcphdrlen, (tot_len - iphdrlen - tcphdrlen)); 
         // send to ip address
         struct sockaddr_in dest;
         dest.sin_family = AF_INET;
         dest.sin_port = tcph -> dest;
         dest.sin_addr.s_addr = iph -> daddr;
-        if (sendto (rawSocket, datagram, ntohs(iph -> tot_len),  0, (struct sockaddr *) &dest, sizeof (dest)) < 0) {
+         
+        LOGDEBUG("length, size: %d, totlen: %d ", size, ntohs(iph -> tot_len));
+       // print_payload(datagram, size);
+        // call rawsocket sender
+        if (sendto (rawSocket, datagram, size,  0, (struct sockaddr *) &dest, sizeof (dest)) < 0) {
             perror("sendto failed");
             LOGERROR("raw socket-error send to fail");
         } else {
-            LOGINFO("raw socket-sent %d", ntohs(iph -> tot_len));
+            LOGDEBUG("raw socket-sent %d", ntohs(iph -> tot_len));
         }
     } else {
         LOGINFO("not tcp packets");
@@ -341,6 +344,8 @@ void * handleAccept(void* args) {
                 real_conn_obj = (conn_t *) malloc(sizeof(conn_t));
                 int* v_port;
                 v_port = (int*) malloc(sizeof(int));
+
+                // send packets
                 sendPackets(acceptHandleContext->proxy_ip,
                         acceptHandleContext->buffer,
                         receivedSize,

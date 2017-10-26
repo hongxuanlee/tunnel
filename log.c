@@ -81,6 +81,16 @@ void writeFile(char* str){
     fclose(fp);
 }
 
+void print_payload(unsigned char* Buffer, int Size){
+    struct iphdr *iph = (struct iphdr *) Buffer;
+    unsigned short iphdrlen = iph->ihl*4;
+    struct tcphdr *tcph = (struct tcphdr *)(Buffer + iphdrlen); 
+    if(Size - tcph->doff*4-iph->ihl*4 > 0){
+        printf("Data Payload\n");  
+        PrintData(Buffer + iphdrlen + tcph->doff*4 , (Size - tcph->doff*4-iph->ihl*4) );
+    }
+}
+
 void getFlag(struct tcphdr* tcph, char* flag){
     if(tcph -> syn != 0) strcat(flag, "S");
     if(tcph -> ack != 0) strcat(flag, "A");
@@ -121,6 +131,7 @@ void _logTcpDatagram(unsigned char* Buffer, int Size){
 
     LOGINFO("%s", str);
     // writeFile(str);
+    //print_payload(Buffer, Size);
 
     free(src_ip);
     free(dst_ip);
@@ -156,15 +167,6 @@ void print_tcp_packet(unsigned char* Buffer, int Size)
 
 }
 
-void print_payload(unsigned char* Buffer, int Size){
-    struct iphdr *iph = (struct iphdr *) Buffer;
-    unsigned short iphdrlen = iph->ihl*4;
-    struct tcphdr *tcph = (struct tcphdr *)(Buffer + iphdrlen); 
-    if(Size - tcph->doff*4-iph->ihl*4 > 0){
-        printf("Data Payload\n");  
-        PrintData(Buffer + iphdrlen + tcph->doff*4 , (Size - tcph->doff*4-iph->ihl*4) );
-    }
-}
 
 void _log(char *title, char* content) {
    printf(getFormattedTime());
