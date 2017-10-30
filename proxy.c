@@ -474,7 +474,7 @@ int main(int argc, const char * argv[]) {
     // TODO
     while(1) {
         struct timespec tim, tim2;
-        tim.tv_sec = 1;
+        tim.tv_sec = 0;
         tim.tv_nsec = 50000; // 0.05ms
 
        if(nanosleep(&tim , &tim2) < 0 )
